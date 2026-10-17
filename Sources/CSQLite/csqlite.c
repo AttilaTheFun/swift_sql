@@ -35,6 +35,6 @@
 #endif
 #endif
 
-#include "amalgamation/sqlite3.c"
+#include "amalgamation/sqlite3.c.h"
 
 #endif

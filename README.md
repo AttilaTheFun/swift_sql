@@ -4,10 +4,11 @@ SQLite for Swift on every platform Swift runs on, as two modules:
 
 - **CSQLite**: SQLite's C API. On Apple's platforms the system's SQLite
   (the SDK's `sqlite3.h`, `libsqlite3`); everywhere else (Linux, Android,
-  Windows, WebAssembly) SQLite 3.53.4's amalgamation, vendored in
-  `Sources/CSQLite/amalgamation` and built by `Sources/CSQLite/csqlite.c`
-  with full-text search (FTS5). The options live in that one file, so SwiftPM
-  and Bazel build the same SQLite.
+  Windows, WebAssembly) SQLite 3.53.4's amalgamation, vendored as
+  `Sources/CSQLite/amalgamation/sqlite3.c.h` (sqlite3.c under a header's
+  name, so it is compiled only through `Sources/CSQLite/csqlite.c`) with
+  full-text search (FTS5). The options live in csqlite.c, so every build of
+  the package builds the same SQLite.
 - **SwiftSQLite**: a thin Swift layer over the C API: safe to share across
   threads, tasks and actors under Swift 6's strict concurrency checking,
   with typed binding and reading, transactions, prepared statements and
@@ -84,7 +85,7 @@ ended inside a transaction. It is thread-safe in a module built for
 
 ## Using it
 
-SwiftPM:
+A Swift package (no Bazel module of its own). SwiftPM:
 
 ```swift
 .package(url: "https://github.com/AttilaTheFun/swift_sqlite.git", from: "0.34.0"),
@@ -92,19 +93,13 @@ SwiftPM:
 .product(name: "SwiftSQLite", package: "swift_sqlite"),
 ```
 
-Bazel (`MODULE.bazel`):
-
-```starlark
-bazel_dep(name = "swift_sqlite", version = "0.34")
-git_override(
-    module_name = "swift_sqlite",
-    remote = "https://github.com/AttilaTheFun/swift_sqlite.git",
-    tag = "v0.34",
-)
-```
-
-then `@swift_sqlite//:SwiftSQLite` (or `@swift_sqlite//:CSQLite` for the C
-API alone).
+Bazel, through rules_swift_package_manager: list the package in the
+`Package.swift` your `swift_deps` extension reads, and depend on
+`@swiftpkg_swift_sqlite//:SwiftSQLite` (or `//:CSQLite` for the C API alone).
+For WebAssembly the C toolchain must find Clang's own headers (`<stdarg.h>`,
+`<stddef.h>`) among its inputs: with rules_swift's Swift SDK toolchains,
+give compiles the SDK's clang resource directory (`-resource-dir`), as
+Isomer's `rules_swift_wasm_clang_resource_dir.patch` does.
 
 ## License
 

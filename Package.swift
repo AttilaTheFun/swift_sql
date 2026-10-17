@@ -14,9 +14,10 @@ let package = Package(
     targets: [
         .target(
             name: "CSQLite",
-            // csqlite.c includes the amalgamation itself (with its options),
-            // and the wasi headers are Bazel's (BUILD.bazel).
-            exclude: ["amalgamation", "wasi"],
+            // csqlite.c compiles the amalgamation (amalgamation/sqlite3.c.h,
+            // SQLite's sqlite3.c under a header's name, so that it is never
+            // compiled on its own and comes along wherever the target's
+            // headers go) with its options, off Apple's platforms.
             linkerSettings: [
                 .linkedLibrary("sqlite3", .when(platforms: apple)),
                 .linkedLibrary("m", .when(platforms: [.linux, .android])),

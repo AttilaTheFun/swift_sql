@@ -1,4 +1,2 @@
 .build/
 .swiftpm/
-bazel-*
-MODULE.bazel.lock
