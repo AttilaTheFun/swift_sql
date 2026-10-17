@@ -1,0 +1,79 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_swift//swift:swift_interop_hint.bzl", "swift_interop_hint")
+load("@rules_swift//swift:swift_library.bzl", "swift_library")
+load("@rules_swift//swift:swift_test.bzl", "swift_test")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files(["Package.swift"])
+
+swift_interop_hint(
+    name = "CSQLiteModule",
+    module_name = "CSQLite",
+)
+
+# The C toolchain for WebAssembly (rules_swift's) does not list Clang's own
+# header directory, and Bazel refuses headers from a directory the toolchain
+# does not own: SQLite there gets these two of its own, and -nobuiltininc.
+cc_library(
+    name = "wasi_compiler_headers",
+    hdrs = glob(["Sources/CSQLite/wasi/*.h"]),
+    includes = ["Sources/CSQLite/wasi"],
+    visibility = ["//visibility:private"],
+)
+
+# SQLite's C API as the module CSQLite: the system's on Apple's platforms,
+# the amalgamation (built by csqlite.c, with its options) elsewhere.
+cc_library(
+    name = "CSQLite",
+    srcs = ["Sources/CSQLite/csqlite.c"],
+    hdrs = ["Sources/CSQLite/include/csqlite.h"],
+    aspect_hints = [":CSQLiteModule"],
+    copts = ["-w"] + select({
+        "@platforms//os:wasi": ["-nobuiltininc"],
+        "//conditions:default": [],
+    }),
+    linkopts = select({
+        "@platforms//os:ios": ["-lsqlite3"],
+        "@platforms//os:macos": ["-lsqlite3"],
+        "@platforms//os:linux": [
+            "-lpthread",
+            "-lm",
+        ],
+        "//conditions:default": [],
+    }),
+    textual_hdrs = [
+        "Sources/CSQLite/amalgamation/sqlite3.c",
+        "Sources/CSQLite/amalgamation/sqlite3.h",
+    ],
+    deps = select({
+        "@platforms//os:wasi": [":wasi_compiler_headers"],
+        "//conditions:default": [],
+    }),
+)
+
+swift_library(
+    name = "SwiftSQLite",
+    srcs = glob(["Sources/SwiftSQLite/*.swift"]),
+    copts = [
+        "-swift-version",
+        "6",
+    ],
+    module_name = "SwiftSQLite",
+    deps = [":CSQLite"],
+)
+
+swift_test(
+    name = "SwiftSQLiteTests",
+    srcs = glob(["Tests/SwiftSQLiteTests/*.swift"]),
+    copts = [
+        "-swift-version",
+        "6",
+    ],
+    target_compatible_with = select({
+        "@platforms//os:macos": [],
+        "@platforms//os:linux": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    deps = [":SwiftSQLite"],
+)

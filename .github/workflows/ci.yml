@@ -1,0 +1,24 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  # Apple's platforms: the system's SQLite, through SwiftPM and Bazel.
+  macos:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test (SwiftPM)
+        run: swift test
+      - name: Test (Bazel)
+        run: bazel test --test_output=errors //:SwiftSQLiteTests
+
+  # Linux: the vendored amalgamation, built from csqlite.c.
+  linux:
+    runs-on: ubuntu-24.04
+    container: swift:6.2-noble
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test (SwiftPM)
+        run: swift test
