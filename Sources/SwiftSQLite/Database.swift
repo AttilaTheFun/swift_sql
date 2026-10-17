@@ -6,10 +6,10 @@ import CSQLite
 /// closure runs (a transaction, a prepared statement's rows) runs with
 /// nothing from another caller between.
 ///
-/// Each method comes twice: synchronous, running on the caller's thread
-/// (SQLite's calls are quick, and the main actor may make them), and `async`,
-/// running off the caller's executor, its task's cancellation interrupting
-/// the statement under way.
+/// Its methods run on the caller's thread (SQLite's calls are quick, and the
+/// main actor may make them); `perform` runs a closure with the connection
+/// off the caller's executor, its task's cancellation stopping the statement
+/// under way.
 public final class Database: @unchecked Sendable {
     // Sendable by construction: `handle` is used only inside `lock`
     // (`withConnection`), and set to nil there when the database closes;
@@ -110,9 +110,8 @@ public final class Database: @unchecked Sendable {
     }
 
     /// Stops the statement under way, which then throws an interrupted
-    /// error (`SQLiteError.isInterrupted`): for a synchronous call another
-    /// thread wants stopped (an `async` call stops when its task is
-    /// cancelled).
+    /// error (`SQLiteError.isInterrupted`): for a call another thread wants
+    /// stopped (`perform` stops when its task is cancelled).
     public func interrupt() {
         handleLock.withLock {
             if let handle { sqlite3_interrupt(handle) }
@@ -166,13 +165,19 @@ public final class Database: @unchecked Sendable {
 
     // MARK: Asynchronous
 
-    /// `body` with the connection, off the caller's executor. Cancelling
-    /// the task stops what it runs: SQLite checks every thousand steps of its
-    /// program (`sqlite3_progress_handler`), and a statement stopped so
-    /// throws an interrupted error (`SQLiteError.isInterrupted`), as does a
-    /// call cancelled before it had the connection.
+    /// Runs `body` with the connection off the caller's executor, for work
+    /// that should not hold the caller's thread (a big query on the main
+    /// actor's behalf). Cancelling the task stops what `body` runs: SQLite
+    /// checks every thousand steps of its program (`sqlite3_progress_handler`),
+    /// and a statement stopped so throws an interrupted error
+    /// (`SQLiteError.isInterrupted`), as does a call cancelled before it had
+    /// the connection.
+    ///
+    /// One entry point rather than an `async` twin of each method: Swift
+    /// prefers an `async` overload inside an `async` function, so twins would
+    /// make every synchronous call there need an `await`.
     @discardableResult
-    public func withConnection<T: Sendable>(_ body: @escaping @Sendable (Connection) throws -> T) async throws -> T {
+    public func perform<T: Sendable>(_ body: @escaping @Sendable (Connection) throws -> T) async throws -> T {
         try Task.checkCancellation()
         let flag = CancellationFlag()
         return try await withTaskCancellationHandler {
@@ -191,49 +196,9 @@ public final class Database: @unchecked Sendable {
             flag.cancel()
         }
     }
-
-    public func execute(_ sql: String) async throws {
-        try await withConnection { try $0.execute(sql) }
-    }
-
-    @discardableResult
-    public func run(_ sql: String, _ arguments: any SQLiteBindable...) async throws -> Int {
-        let values = arguments.map(\.sqliteValue)
-        return try await withConnection { try $0.run(sql, arguments: values) }
-    }
-
-    @discardableResult
-    public func run(_ sql: String, arguments: [any SQLiteBindable]) async throws -> Int {
-        let values = arguments.map(\.sqliteValue)
-        return try await withConnection { try $0.run(sql, arguments: values) }
-    }
-
-    public func query<T: Sendable>(_ sql: String, _ arguments: any SQLiteBindable..., row: @escaping @Sendable (Row) throws -> T) async throws -> [T] {
-        let values = arguments.map(\.sqliteValue)
-        return try await withConnection { try $0.query(sql, arguments: values, row: row) }
-    }
-
-    public func query<T: Sendable>(_ sql: String, arguments: [any SQLiteBindable], row: @escaping @Sendable (Row) throws -> T) async throws -> [T] {
-        let values = arguments.map(\.sqliteValue)
-        return try await withConnection { try $0.query(sql, arguments: values, row: row) }
-    }
-
-    @discardableResult
-    public func prepare<T: Sendable>(_ sql: String, _ body: @escaping @Sendable (Statement) throws -> T) async throws -> T {
-        try await withConnection { try $0.prepare(sql, body) }
-    }
-
-    @discardableResult
-    public func transaction<T: Sendable>(_ kind: TransactionKind = .deferred, _ body: @escaping @Sendable (Connection) throws -> T) async throws -> T {
-        try await withConnection { try $0.transaction(kind, body) }
-    }
-
-    public func serialize(schema: String = "main") async throws -> [UInt8] {
-        try await withConnection { try $0.serialize(schema: schema) }
-    }
 }
 
-/// Whether an `async` call's task was cancelled, set from the task's
+/// Whether a `perform` call's task was cancelled, set from the task's
 /// cancellation handler and read by SQLite's progress handler on the thread
 /// running the call.
 private final class CancellationFlag: @unchecked Sendable {
@@ -244,7 +209,7 @@ private final class CancellationFlag: @unchecked Sendable {
     var isCancelled: Bool { lock.withLock { cancelled } }
 }
 
-/// SQLite's progress handler for an `async` call: nonzero stops the
+/// SQLite's progress handler for a `perform` call: nonzero stops the
 /// statement (SQLITE_INTERRUPT) once its task is cancelled.
 private let cancelledProgress: @convention(c) (UnsafeMutableRawPointer?) -> Int32 = { context in
     guard let context else { return 0 }

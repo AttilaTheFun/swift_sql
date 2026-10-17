@@ -188,16 +188,20 @@ final class SwiftSQLiteTests: XCTestCase {
         try await withThrowingTaskGroup(of: Void.self) { group in
             for index in 0..<200 {
                 group.addTask {
-                    try await database.run("INSERT INTO items(name, score) VALUES (?, ?)", "task \(index)", Double(index))
+                    try await database.perform { try $0.run("INSERT INTO items(name, score) VALUES (?, ?)", "task \(index)", Double(index)) }
                 }
             }
             try await group.waitForAll()
         }
-        let total = try await database.query("SELECT count(*), sum(score) FROM items") { row in [row.int(0), row.int(1)] }
+        let total = try await database.perform { try $0.query("SELECT count(*), sum(score) FROM items") { row in [row.int(0), row.int(1)] } }
         XCTAssertEqual(total, [[200, 19900]])
-        let names = try await database.transaction { connection in
-            try connection.query("SELECT name FROM items WHERE score < 3 ORDER BY score") { $0.text(0) ?? "" }
+        let names = try await database.perform { connection in
+            try connection.transaction { connection in
+                try connection.query("SELECT name FROM items WHERE score < 3 ORDER BY score") { $0.text(0) ?? "" }
+            }
         }
+        // The synchronous methods need no `await` in an async function.
+        XCTAssertEqual(try database.query("SELECT count(*) FROM items") { $0.int(0) }, [200])
         XCTAssertEqual(names, ["task 0", "task 1", "task 2"])
     }
 
@@ -205,10 +209,12 @@ final class SwiftSQLiteTests: XCTestCase {
         let database = try Database.inMemory()
         let task = Task {
             // Counts for a long while unless interrupted.
-            try await database.query("""
-                WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 1000000000)
-                SELECT count(*) FROM n
-                """) { $0.int(0) }
+            try await database.perform { connection in
+                try connection.query("""
+                    WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 1000000000)
+                    SELECT count(*) FROM n
+                    """) { $0.int(0) }
+            }
         }
         try await Task.sleep(nanoseconds: 50_000_000)
         task.cancel()
@@ -218,7 +224,14 @@ final class SwiftSQLiteTests: XCTestCase {
         } catch let error as SQLiteError {
             XCTAssertTrue(error.isInterrupted, "\(error)")
         }
-        let after = try await database.query("SELECT 1") { $0.int(0) }
-        XCTAssertEqual(after, [1], "the database works after an interrupt")
+        XCTAssertEqual(try database.query("SELECT 1") { $0.int(0) }, [1], "the database works after an interrupt")
+        // A task cancelled before its call has the connection runs nothing.
+        let cancelled = Task {
+            try await Task.sleep(nanoseconds: 20_000_000)
+            return try await database.perform { try $0.run("CREATE TABLE never(x)") }
+        }
+        cancelled.cancel()
+        _ = try? await cancelled.value
+        XCTAssertEqual(try database.query("SELECT count(*) FROM sqlite_master WHERE name = 'never'") { $0.int(0) }, [0])
     }
 }

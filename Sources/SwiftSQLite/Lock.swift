@@ -10,6 +10,10 @@ import Android
 import WinSDK
 #elseif canImport(WASILibc)
 import WASILibc
+#if _runtime(_multithreaded)
+// wasm32-wasip1-threads: the C library's pthreads are a module of their own.
+import wasi_pthread
+#endif
 #endif
 
 /// A recursive lock over the platform's own (a pthread mutex, a Windows

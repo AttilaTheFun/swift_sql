@@ -30,8 +30,10 @@ try db.transaction { tx in
     try tx.run("UPDATE notes SET pinned = 0")
 }
 
-// The same calls, off the caller's executor; cancelling the task stops the statement.
-let count = try await db.query("SELECT count(*) FROM notes") { $0.int(0) }
+// Off the caller's executor; cancelling the task stops the statement.
+let count = try await db.perform { connection in
+    try connection.query("SELECT count(*) FROM notes") { $0.int(0) }
+}
 ```
 
 ## The API
@@ -41,11 +43,14 @@ let count = try await db.query("SELECT count(*) FROM notes") { $0.int(0) }
   runs (a transaction, a prepared statement's rows) runs with nothing from
   another caller between. The lock is recursive: the database called from
   inside one of its own closures runs there.
-- Each method comes twice. Synchronous, on the caller's thread (SQLite's
-  calls are quick, and the main actor may make them), and `async`, run off
-  the caller's executor, where cancelling the task stops the statement under
-  way (SQLite checks every thousand steps) with an error whose
-  `isInterrupted` is true.
+- The methods run on the caller's thread: SQLite's calls are quick, and the
+  main actor may make them. `perform { connection in … }` runs a closure off
+  the caller's executor instead, for work that should not hold the caller's
+  thread; cancelling its task stops the statement under way (SQLite checks
+  every thousand steps) with an error whose `isInterrupted` is true. (One
+  async entry point rather than an `async` twin of each method: Swift prefers
+  an `async` overload inside an `async` function, so twins would make every
+  synchronous call there need an `await`.)
 - `execute(_:)` runs SQL with no arguments, one statement or several.
   `run(_:_:)` runs one statement with arguments and returns how many rows it
   changed. `query(_:_:row:)` reads each row with your closure.
