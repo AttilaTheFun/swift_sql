@@ -188,7 +188,9 @@ final class SwiftSQLiteTests: XCTestCase {
         try await withThrowingTaskGroup(of: Void.self) { group in
             for index in 0..<200 {
                 group.addTask {
-                    try await database.perform { try $0.run("INSERT INTO items(name, score) VALUES (?, ?)", "task \(index)", Double(index)) }
+                    _ = try await database.perform { connection in
+                        try connection.run("INSERT INTO items(name, score) VALUES (?, ?)", "task \(index)", Double(index))
+                    }
                 }
             }
             try await group.waitForAll()
