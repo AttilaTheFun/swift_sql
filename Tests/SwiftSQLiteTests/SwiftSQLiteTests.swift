@@ -172,6 +172,7 @@ final class SwiftSQLiteTests: XCTestCase {
             database.close()
             XCTAssertThrowsError(try database.execute("SELECT 1")) { error in
                 XCTAssertEqual((error as? SQLiteError)?.code, 21, "SQLITE_MISUSE")
+                XCTAssertEqual((error as? SQLiteError)?.isClosed, true)
             }
         }
         let reopened = try Database(path: path, options: .readOnly)

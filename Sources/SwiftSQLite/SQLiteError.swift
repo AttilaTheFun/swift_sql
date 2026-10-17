@@ -25,6 +25,8 @@ public struct SQLiteError: Error, Sendable, Equatable, CustomStringConvertible {
     public var isConstraint: Bool { code == SQLITE_CONSTRAINT }
     /// The call was interrupted: its task was cancelled.
     public var isInterrupted: Bool { code == SQLITE_INTERRUPT }
+    /// The database was closed before the call.
+    public var isClosed: Bool { extendedCode == SQLITE_MISUSE && message == Self.closedMessage }
 
     public var description: String {
         let name = String(cString: sqlite3_errstr(extendedCode))
@@ -46,6 +48,8 @@ public struct SQLiteError: Error, Sendable, Equatable, CustomStringConvertible {
 
     /// The use of a closed database.
     static func closed(_ sql: String? = nil) -> SQLiteError {
-        SQLiteError(extendedCode: SQLITE_MISUSE, message: "the database is closed", sql: sql)
+        SQLiteError(extendedCode: SQLITE_MISUSE, message: closedMessage, sql: sql)
     }
+
+    private static let closedMessage = "the database is closed"
 }
