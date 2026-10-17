@@ -22,3 +22,15 @@ jobs:
       - uses: actions/checkout@v4
       - name: Test (SwiftPM)
         run: swift test
+
+  # Windows: the vendored amalgamation, and the lock as a critical section.
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: compnerd/gha-setup-swift@main
+        with:
+          branch: swift-6.2-release
+          tag: 6.2-RELEASE
+      - name: Test (SwiftPM)
+        run: swift test
