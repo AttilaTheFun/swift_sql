@@ -1,2 +1,6 @@
 .build/
 .swiftpm/
+# Bazel builds this package only as a dependency (rules_swift_package_manager);
+# never commit a local Bazel run's symlinks or lock file.
+bazel-*
+MODULE.bazel.lock
