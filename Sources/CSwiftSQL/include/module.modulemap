@@ -1,0 +1,4 @@
+module CSwiftSQL {
+    header "cswiftsql.h"
+    export *
+}

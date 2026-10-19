@@ -1,7 +1,7 @@
-import SwiftSQLite
+import SwiftSQL
 import XCTest
 
-final class SwiftSQLiteTests: XCTestCase {
+final class SwiftSQLTests: XCTestCase {
     private func makeDatabase() throws -> Database {
         let database = try Database.inMemory()
         try database.execute("""
@@ -160,7 +160,7 @@ final class SwiftSQLiteTests: XCTestCase {
     }
 
     func testFileDatabasePersistsAndClosedThrows() throws {
-        let directory = NSTemporaryDirectory() + "swift_sqlite_\(UInt32.random(in: 0...UInt32.max))"
+        let directory = NSTemporaryDirectory() + "swift_sql_\(UInt32.random(in: 0...UInt32.max))"
         try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(atPath: directory) }
         let path = directory + "/test.sqlite"

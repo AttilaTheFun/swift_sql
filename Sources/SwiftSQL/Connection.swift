@@ -1,4 +1,4 @@
-import CSQLite
+import CSwiftSQL
 
 /// How a transaction takes its locks: SQLite's BEGIN DEFERRED (on the first
 /// read or write), IMMEDIATE (a write lock at once) or EXCLUSIVE.
@@ -23,7 +23,7 @@ public struct Connection {
     }
 
     private func check() {
-        precondition(scope.live, "a SwiftSQLite Connection was used outside the closure that handed it out")
+        precondition(scope.live, "a SwiftSQL Connection was used outside the closure that handed it out")
     }
 
     /// Runs `sql`, one statement or several separated by semicolons, with no
@@ -83,14 +83,14 @@ public struct Connection {
     public func transaction<T>(_ kind: TransactionKind = .deferred, _ body: (Connection) throws -> T) throws -> T {
         check()
         if isInTransaction {
-            try execute("SAVEPOINT swift_sqlite")
+            try execute("SAVEPOINT swift_sql")
             do {
                 let result = try body(self)
-                try execute("RELEASE swift_sqlite")
+                try execute("RELEASE swift_sql")
                 return result
             } catch {
-                try? execute("ROLLBACK TO swift_sqlite")
-                try? execute("RELEASE swift_sqlite")
+                try? execute("ROLLBACK TO swift_sql")
+                try? execute("RELEASE swift_sql")
                 throw error
             }
         }
@@ -138,7 +138,7 @@ public struct Connection {
     }
 
     /// The connection's `sqlite3` pointer, for what this package does not
-    /// wrap (`import CSQLite`). Valid for `body` only.
+    /// wrap (`import CSwiftSQL`). Valid for `body` only.
     public func withUnsafeHandle<T>(_ body: (OpaquePointer) throws -> T) rethrows -> T {
         check()
         return try body(handle)

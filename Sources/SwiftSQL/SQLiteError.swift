@@ -1,4 +1,4 @@
-import CSQLite
+import CSwiftSQL
 
 /// A failed SQLite call: its result code (extended, as the connection
 /// reports them), SQLite's message, and the SQL it was running, if any.

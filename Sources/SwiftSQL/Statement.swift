@@ -1,4 +1,4 @@
-import CSQLite
+import CSwiftSQL
 
 /// A prepared statement, for running one SQL statement many times with
 /// different arguments. It lives for the `prepare` closure that hands it out,
@@ -34,7 +34,7 @@ public final class Statement {
     }
 
     private func checkLive() {
-        precondition(live, "a SwiftSQLite Statement or Row was used outside the closure that handed it out")
+        precondition(live, "a SwiftSQL Statement or Row was used outside the closure that handed it out")
     }
 
     /// How many `?` parameters it takes.
@@ -98,12 +98,12 @@ public final class Statement {
         case .real(let real):
             code = sqlite3_bind_double(handle, index, real)
         case .text(let text):
-            code = sqlite3_bind_text64(handle, index, text, UInt64(text.utf8.count), csqlite_transient(), UInt8(SQLITE_UTF8))
+            code = sqlite3_bind_text64(handle, index, text, UInt64(text.utf8.count), cswiftsql_transient(), UInt8(SQLITE_UTF8))
         case .blob(let bytes):
             code = bytes.withUnsafeBytes { buffer in
                 // A zero-length blob is a blob, not NULL: SQLite needs a
                 // non-null pointer for it.
-                buffer.baseAddress.map { sqlite3_bind_blob64(handle, index, $0, UInt64(buffer.count), csqlite_transient()) }
+                buffer.baseAddress.map { sqlite3_bind_blob64(handle, index, $0, UInt64(buffer.count), cswiftsql_transient()) }
                     ?? sqlite3_bind_zeroblob(handle, index, 0)
             }
         }
