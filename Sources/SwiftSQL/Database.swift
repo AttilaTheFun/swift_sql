@@ -1,4 +1,4 @@
-import CSQLite
+import CSwiftSQL
 
 /// An SQLite database: one connection, shared by every thread, task and actor
 /// that has the `Database`. Each call has the connection to itself, the

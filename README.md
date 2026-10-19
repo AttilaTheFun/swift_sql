@@ -1,22 +1,28 @@
-# swift_sqlite
+# swift_sql
+
+Formerly swift_sqlite, with the modules `SwiftSQLite` and `CSQLite`: renamed
+in 0.35, because Apple's systems carry a private framework also named
+`SwiftSQLite`, whose classes share a Swift module's runtime class names
+(`_TtC11SwiftSQLite…`) and so clashed with ours in one process. The old
+URL redirects here.
 
 SQLite for Swift on every platform Swift runs on, as two modules:
 
-- **CSQLite**: SQLite's C API. On Apple's platforms the system's SQLite
+- **CSwiftSQL**: SQLite's C API. On Apple's platforms the system's SQLite
   (the SDK's `sqlite3.h`, `libsqlite3`); everywhere else (Linux, Android,
   Windows, WebAssembly) SQLite 3.53.4's amalgamation, vendored as
-  `Sources/CSQLite/amalgamation/sqlite3.c.h` (sqlite3.c under a header's
-  name, so it is compiled only through `Sources/CSQLite/csqlite.c`) with
-  full-text search (FTS5). The options live in csqlite.c, so every build of
+  `Sources/CSwiftSQL/amalgamation/sqlite3.c.h` (sqlite3.c under a header's
+  name, so it is compiled only through `Sources/CSwiftSQL/cswiftsql.c`) with
+  full-text search (FTS5). The options live in cswiftsql.c, so every build of
   the package builds the same SQLite.
-- **SwiftSQLite**: a thin Swift layer over the C API: safe to share across
+- **SwiftSQL**: a thin Swift layer over the C API: safe to share across
   threads, tasks and actors under Swift 6's strict concurrency checking,
   with typed binding and reading, transactions, prepared statements and
   cancellation. It is not an ORM: you write the SQL. It has no Foundation
   dependency.
 
 ```swift
-import SwiftSQLite
+import SwiftSQL
 
 let db = try Database(path: path)            // or Database.inMemory()
 try db.execute("""
@@ -73,7 +79,7 @@ let count = try await db.perform { connection in
   questions.
 - `serialize()` and `Database(serialized:)` copy a database to bytes and back.
 - For what this does not wrap, `Connection.withUnsafeHandle` gives you the
-  `sqlite3` pointer (`import CSQLite`).
+  `sqlite3` pointer (`import CSwiftSQL`).
 
 ## WebAssembly (WASI)
 
@@ -88,14 +94,14 @@ ended inside a transaction. It is thread-safe in a module built for
 A Swift package (no Bazel module of its own). SwiftPM:
 
 ```swift
-.package(url: "https://github.com/AttilaTheFun/swift_sqlite.git", from: "0.34.0"),
+.package(url: "https://github.com/AttilaTheFun/swift_sql.git", from: "0.35.0"),
 // …
-.product(name: "SwiftSQLite", package: "swift_sqlite"),
+.product(name: "SwiftSQL", package: "swift_sql"),
 ```
 
 Bazel, through rules_swift_package_manager: list the package in the
 `Package.swift` your `swift_deps` extension reads, and depend on
-`@swiftpkg_swift_sqlite//:SwiftSQLite` (or `//:CSQLite` for the C API alone).
+`@swiftpkg_swift_sql//:SwiftSQL` (or `//:CSwiftSQL` for the C API alone).
 For WebAssembly the C toolchain must find Clang's own headers (`<stdarg.h>`,
 `<stddef.h>`) among its inputs: with rules_swift's Swift SDK toolchains,
 give compiles the SDK's clang resource directory (`-resource-dir`), as

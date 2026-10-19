@@ -1,7 +1,7 @@
-import SwiftSQLite
+import SwiftSQL
 import XCTest
 
-final class SwiftSQLiteTests: XCTestCase {
+final class SwiftSQLTests: XCTestCase {
     private func makeDatabase() throws -> Database {
         let database = try Database.inMemory()
         try database.execute("""
@@ -46,7 +46,7 @@ final class SwiftSQLiteTests: XCTestCase {
 
     func testUnicodeText() throws {
         let database = try makeDatabase()
-        let name = "Logan’s Mac — 日本語 🚀"
+        let name = "Studio’s Mac — 日本語 🚀"
         try database.run("INSERT INTO items(name) VALUES (?)", name)
         XCTAssertEqual(try database.query("SELECT name FROM items") { $0.text(0) }, [name])
     }
@@ -160,7 +160,7 @@ final class SwiftSQLiteTests: XCTestCase {
     }
 
     func testFileDatabasePersistsAndClosedThrows() throws {
-        let directory = NSTemporaryDirectory() + "swift_sqlite_\(UInt32.random(in: 0...UInt32.max))"
+        let directory = NSTemporaryDirectory() + "swift_sql_\(UInt32.random(in: 0...UInt32.max))"
         try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(atPath: directory) }
         let path = directory + "/test.sqlite"

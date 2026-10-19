@@ -12,7 +12,7 @@ jobs:
       - name: Test (SwiftPM)
         run: swift test
 
-  # Linux: the vendored amalgamation, built from csqlite.c.
+  # Linux: the vendored amalgamation, built from cswiftsql.c.
   linux:
     runs-on: ubuntu-24.04
     container: swift:6.2-noble
