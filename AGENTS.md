@@ -2,12 +2,12 @@
 
 SQLite for Swift: `CSQLite` (the C API: the system's SQLite on Apple's
 platforms, the vendored amalgamation elsewhere) and `SwiftSQLite` (a thin,
-strict-concurrency-safe Swift layer over it). Public. Part of Logan's stack
-since 0.34: Visor (red and blue), Isomer's examples and swift_proto_sql
-reach SQLite through it. Tagged with the stack's number at its releases
+strict-concurrency-safe Swift layer over it). Public. Part of a set of
+packages and apps released together since 0.34: Visor among them reaches
+SQLite through it. Tagged with the stack's number at its releases
 (v0.34, …).
 
-- **A Swift package only** (Logan, 2026-10-17: no Bazel module; Bazel
+- **A Swift package only** (no Bazel module; Bazel
   consumers take it through rules_swift_package_manager, as
   `@swiftpkg_swift_sqlite//:SwiftSQLite`). SQLite's compile options live in
   `Sources/CSQLite/csqlite.c`, not in the manifest, so every build of the

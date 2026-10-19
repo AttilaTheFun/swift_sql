@@ -46,7 +46,7 @@ final class SwiftSQLiteTests: XCTestCase {
 
     func testUnicodeText() throws {
         let database = try makeDatabase()
-        let name = "Logan’s Mac — 日本語 🚀"
+        let name = "Studio’s Mac — 日本語 🚀"
         try database.run("INSERT INTO items(name) VALUES (?)", name)
         XCTAssertEqual(try database.query("SELECT name FROM items") { $0.text(0) }, [name])
     }
