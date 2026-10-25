@@ -31,3 +31,14 @@ SQLite through it. Tagged with the stack's number at its releases
   `Connection`/`Statement`/`Row` confined to their closures.
 - Tests: `swift test` (macOS), and `swift test` in a Linux container (CI's `swift:6.2-noble`; in an image
   whose `clang` is not the Swift toolchain's, set `CC` to the toolchain's).
+
+## The repository's icon
+
+`.github/SwiftSQL.icon` (Icon Composer) and its rendering, `.github/icon.png`,
+where Reviews and other tools look for a repository's icon. Rendered with
+`ictool` (in Xcode's Icon Composer.app, Contents/Executables):
+
+    ictool .github/SwiftSQL.icon --export-image --output-file .github/icon.png \
+        --platform iOS --rendition Default --width 512 --height 512 --scale 1
+
+No README in .github: GitHub would show it as the repository's.
