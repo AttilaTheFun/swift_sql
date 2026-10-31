@@ -3,32 +3,44 @@ on:
   pull_request:
   push:
     branches: [main]
+# On the repository's own runner (self-hosted, swift_sql-ci), which leases
+# what a job runs in from OS Server and which a fork's pull request never
+# reaches.
 jobs:
-  # Apple's platforms: the system's SQLite.
+  # Apple's platforms: the system's SQLite, in a macOS VM
+  # (tools/ci/mac_vm_tests.sh).
   macos:
-    runs-on: macos-26
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, swift_sql-ci]
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      - name: Test (SwiftPM)
-        run: swift test
-
-  # Linux: the vendored amalgamation, built from cswiftsql.c.
-  linux:
-    runs-on: ubuntu-24.04
-    container: swift:6.2-noble
-    steps:
-      - uses: actions/checkout@v4
-      - name: Test (SwiftPM)
-        run: swift test
-
-  # Windows: the vendored amalgamation, and the lock as a critical section.
-  windows:
-    runs-on: windows-2022
-    steps:
-      - uses: actions/checkout@v4
-      - uses: compnerd/gha-setup-swift@main
         with:
-          branch: swift-6.2-release
-          tag: 6.2-RELEASE
-      - name: Test (SwiftPM)
-        run: swift test
+          ref: ${{ github.event.pull_request.head.sha }}
+      # exec: the runner's cancel reaches the script's trap, which releases the VM.
+      - run: exec tools/ci/mac_vm_tests.sh
+
+  # Linux: the vendored amalgamation, built from cswiftsql.c, in a container
+  # of Swift's image (tools/ci/linux_tests.sh).
+  linux:
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, swift_sql-ci]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - run: exec tools/ci/linux_tests.sh
+
+  # Windows: the vendored amalgamation, and the lock as a critical section,
+  # in a Windows VM (tools/ci/windows_vm_tests.sh).
+  windows:
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, swift_sql-ci]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      # exec: the runner's cancel reaches the script's trap, which releases the VM.
+      - run: exec tools/ci/windows_vm_tests.sh
