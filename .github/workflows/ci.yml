@@ -4,9 +4,11 @@ on:
   push:
     branches: [main]
 # A newer push to a pull request cancels its run if it hasn't finished;
-# main's runs are never cut short.
+# main's runs are never cut short, each a group of its own: GitHub keeps one
+# pending run per group and cancels the rest, so main's runs sharing one left
+# a commit queued between two others unchecked.
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.event_name == 'pull_request' && format('ci-pr-{0}', github.event.pull_request.number) || format('ci-{0}', github.run_id) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 # On the repository's own runner (self-hosted, swift_sql-ci), which leases
 # what a job runs in from OS Server and which a fork's pull request never
