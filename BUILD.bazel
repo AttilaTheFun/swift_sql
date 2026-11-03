@@ -1,0 +1,56 @@
+# swift_sql for Bazel: the same targets as Package.swift (CSwiftSQL,
+# SwiftSQL), and its tests as a macos_unit_test bundle, which CI builds on
+# Linux and runs on a slot of OS Server's primary Mac
+# (tools/ci/mac_slot_tests.sh).
+
+load("@rules_apple//apple:macos.bzl", "macos_unit_test")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_swift//swift:swift_interop_hint.bzl", "swift_interop_hint")
+load("@rules_swift//swift:swift_library.bzl", "swift_library")
+
+# SQLite's C API: the system's on Apple's platforms (cswiftsql.c is empty
+# there, and libsqlite3 is linked), the amalgamation everywhere else.
+cc_library(
+    name = "CSwiftSQL",
+    srcs = ["Sources/CSwiftSQL/cswiftsql.c"],
+    hdrs = ["Sources/CSwiftSQL/include/cswiftsql.h"],
+    aspect_hints = [":CSwiftSQL_module"],
+    linkopts = select({
+        "@platforms//os:macos": ["-lsqlite3"],
+        "@platforms//os:ios": ["-lsqlite3"],
+        "@platforms//os:linux": ["-lm", "-lpthread"],
+        "//conditions:default": [],
+    }),
+    strip_include_prefix = "Sources/CSwiftSQL/include",
+    textual_hdrs = glob(["Sources/CSwiftSQL/amalgamation/*.h"]),
+    visibility = ["//visibility:public"],
+)
+
+swift_interop_hint(
+    name = "CSwiftSQL_module",
+    module_name = "CSwiftSQL",
+)
+
+swift_library(
+    name = "SwiftSQL",
+    srcs = glob(["Sources/SwiftSQL/*.swift"]),
+    copts = ["-swift-version", "6"],
+    module_name = "SwiftSQL",
+    visibility = ["//visibility:public"],
+    deps = [":CSwiftSQL"],
+)
+
+swift_library(
+    name = "SwiftSQLTests_lib",
+    testonly = True,
+    srcs = glob(["Tests/SwiftSQLTests/*.swift"]),
+    copts = ["-swift-version", "6"],
+    module_name = "SwiftSQLTests",
+    deps = [":SwiftSQL"],
+)
+
+macos_unit_test(
+    name = "SwiftSQLTests",
+    minimum_os_version = "13.0",
+    deps = [":SwiftSQLTests_lib"],
+)

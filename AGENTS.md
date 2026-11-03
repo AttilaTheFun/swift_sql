@@ -7,9 +7,10 @@ packages and apps released together since 0.34: Visor among them reaches
 SQLite through it. Tagged with the stack's number at its releases
 (v0.34, …; tags `v0.N.0` from 0.35, which SwiftPM reads as versions).
 
-- **A Swift package only** (no Bazel module; Bazel
-  consumers take it through rules_swift_package_manager, as
-  `@swiftpkg_swift_sql//:SwiftSQL`). SQLite's compile options live in
+- **A Swift package** (Bazel consumers take it through
+  rules_swift_package_manager, as `@swiftpkg_swift_sql//:SwiftSQL`; its own
+  MODULE.bazel and BUILD.bazel are CI's, building the tests as a macOS
+  bundle on Linux). SQLite's compile options live in
   `Sources/CSwiftSQL/cswiftsql.c`, not in the manifest, so every build of the
   package builds the same SQLite. Change them there.
 - **Upgrading SQLite**: replace `Sources/CSwiftSQL/amalgamation/sqlite3.h` and
@@ -31,6 +32,11 @@ SQLite through it. Tagged with the stack's number at its releases
   `Connection`/`Statement`/`Row` confined to their closures.
 - Tests: `swift test` (macOS), and `swift test` in a Linux container (CI's `swift:6.2-noble`; in an image
   whose `clang` is not the Swift toolchain's, set `CC` to the toolchain's).
+  CI's macOS run builds them with Bazel on Linux (`bazel build
+  --config=apple_on_linux //:SwiftSQLTests`, with a downloader config for
+  the SDK archive) and runs the bundle on a slot of OS Server's primary Mac
+  (tools/ci/mac_vm_tests.sh). A test file added to Tests/SwiftSQLTests is in
+  both.
 
 ## The repository's icon
 
