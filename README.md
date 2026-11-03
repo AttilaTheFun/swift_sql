@@ -91,7 +91,7 @@ ended inside a transaction. It is thread-safe in a module built for
 
 ## Using it
 
-A Swift package (no Bazel module of its own). SwiftPM:
+A Swift package (its MODULE.bazel builds only its tests, for CI). SwiftPM:
 
 ```swift
 .package(url: "https://github.com/AttilaTheFun/swift_sql.git", from: "0.35.0"),
