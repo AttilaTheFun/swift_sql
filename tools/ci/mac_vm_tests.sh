@@ -64,6 +64,18 @@ run() {
     child=""
     return "$status"
 }
+# The same with a file on its standard input (a command put in the
+# background otherwise reads /dev/null).
+run_from() {
+    local input="$1"
+    shift
+    "$@" < "$input" &
+    child=$!
+    local status=0
+    wait "$child" || status=$?
+    child=""
+    return "$status"
+}
 
 # In the container: the bundle built (the SDK archive and the cache from
 # OS Server, by the host named), then written out as base64.
@@ -80,9 +92,9 @@ echo "-- end --"'
 
 echo "::group::The tests, built on Linux"
 git -C "$ROOT" archive --format=tar -o "$work/tree.tar" HEAD
-run "$OSS" machine run container --image="$IMAGE" --cpus=4 --memory=8 \
+run_from "$work/tree.tar" "$OSS" machine run container --image="$IMAGE" --cpus=4 --memory=8 \
     --volume=swift_sql-ci:/var/cache/bazel:32:keep --inside --cache="$host" --workdir=/ -- \
-    sh -c "$steps" sh "$host" "$SDK_SHA256" < "$work/tree.tar" > "$work/bundle.b64"
+    sh -c "$steps" sh "$host" "$SDK_SHA256" > "$work/bundle.b64"
 # The bundle alone, whatever else came out on standard output.
 sed -n '/^-- the bundle --$/,/^-- end --$/p' "$work/bundle.b64" | sed '1d;$d' | base64 --decode > "$work/SwiftSQLTests.zip"
 ls -l "$work/SwiftSQLTests.zip"
