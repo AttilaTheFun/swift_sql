@@ -10,20 +10,13 @@ bazel_dep(name = "platforms", version = "1.1.0")
 bazel_dep(name = "rules_cc", version = "0.2.20")
 bazel_dep(name = "rules_swift", version = "4.2.2")
 bazel_dep(name = "apple_support", version = "2.10.1.applecross.1")
-bazel_dep(name = "rules_apple", version = "5.3.1.applecross.1")
+bazel_dep(name = "rules_apple", version = "5.3.1.applecross.2")
 
 # Apple's targets built on Linux (bazel_registry's preset: rules_apple and
 # apple_support with rules_applecross's patches in): Xcode 27.2's SDKs, from
 # an archive the builder's downloader config names (OS Server's files, by
 # SHA-256), and the Swift that built them.
-bazel_dep(name = "rules_applecross", version = "0.0.3.e859e34")
-
-# rules_apple's MODULE.bazel asks for rules_applecross 0.0.3, which no
-# registry holds: pinned, so it isn't looked for.
-single_version_override(
-    module_name = "rules_applecross",
-    version = "0.0.3.e859e34",
-)
+bazel_dep(name = "rules_applecross", version = "0.0.3.e859e34.1")
 
 apple_cross_toolchain = use_extension("@rules_applecross//toolchain:extensions.bzl", "apple_cross_toolchain")
 apple_cross_toolchain.configure(
