@@ -10,15 +10,15 @@ on:
 concurrency:
   group: ${{ github.event_name == 'pull_request' && format('ci-pr-{0}', github.event.pull_request.number) || format('ci-{0}', github.run_id) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-# On the repository's own runner (self-hosted, swift_sql-ci), which leases
-# what a job runs in from OS Server and which a fork's pull request never
-# reaches.
+# On OS Server's single-use runners (self-hosted, swift_sql-jit: a Linux
+# container for each job), which lease what a job runs in from OS Server
+# and which a fork's pull request never reaches.
 jobs:
   # Whether the pull request changes anything but documentation (Markdown,
   # docs/, .notes/); a push to main always does. A job it skips passes.
   changes:
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, swift_sql-ci]
+    runs-on: [self-hosted, swift_sql-jit]
     timeout-minutes: 5
     outputs:
       code: ${{ steps.diff.outputs.code }}
@@ -42,7 +42,7 @@ jobs:
   macos:
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: [self-hosted, swift_sql-ci]
+    runs-on: [self-hosted, swift_sql-jit]
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -56,7 +56,7 @@ jobs:
   linux:
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: [self-hosted, swift_sql-ci]
+    runs-on: [self-hosted, swift_sql-jit]
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -69,7 +69,7 @@ jobs:
   windows:
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: [self-hosted, swift_sql-ci]
+    runs-on: [self-hosted, swift_sql-jit]
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
