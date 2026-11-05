@@ -27,7 +27,14 @@ OSS="/Applications/OS Server.app/Contents/Helpers/oss"
 [ -x "$OSS" ] || OSS="$(command -v oss)"
 me="$(basename "$0")"
 
+# OS Server's host, for its Bazel cache and files: OSS_FILES_HOST, else the
+# first of OSS_SERVERS (an OS Server runner's), else this Mac's Tailscale name.
 host="${OSS_FILES_HOST:-}"
+if [ -z "$host" ] && [ -n "${OSS_SERVERS:-}" ]; then
+    host="${OSS_SERVERS%%[ ,]*}"
+    host="${host#*://}"
+    host="${host%%[:/]*}"
+fi
 if [ -z "$host" ]; then
     host="$(/Applications/Tailscale.app/Contents/MacOS/Tailscale status --json | python3 -c 'import json, sys; print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))')"
 fi
