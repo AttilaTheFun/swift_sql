@@ -7,7 +7,13 @@
 # ready in seconds), not in a macOS VM leased for the job: the macOS VMs
 # are left to the agents that need one (Logan, 3 Nov 2026).
 #
-#   tools/ci/mac_vm_tests.sh
+#   tools/ci/mac_vm_tests.sh [--build-here] [--build-only]
+#
+# --build-here builds the bundle in the job's own Linux container (a
+# swift_sql-jit runner: Swift, clang and bazelisk, OS Server's cache in its
+# ~/.bazelrc) rather than in a leased one. --build-only stops once it is
+# built, leasing no slot: a pull request's container job, which leases
+# nothing (docs/CI_POLICY.md in AttilaTheFun/reviews), and main's populate.
 #
 #   OSS_FILES_HOST      the name a container reaches this Mac's OS Server by
 #                       (default: this Mac's tailnet name, from Tailscale)
@@ -26,6 +32,15 @@ SDK_SHA256="b1583e60f9fd35881b5a948ce71627079877f1ced7ea231e14d3c342dd389668"
 OSS="/Applications/OS Server.app/Contents/Helpers/oss"
 [ -x "$OSS" ] || OSS="$(command -v oss)"
 me="$(basename "$0")"
+here=""
+only=""
+for argument in "$@"; do
+    case "$argument" in
+        --build-here) here=1 ;;
+        --build-only) only=1 ;;
+        *) echo "usage: $me [--build-here] [--build-only]" >&2; exit 2 ;;
+    esac
+done
 
 # OS Server's host, for its Bazel cache and files: OSS_FILES_HOST, else the
 # first of OSS_SERVERS (an OS Server runner's), else this Mac's Tailscale name.
@@ -99,13 +114,22 @@ echo "-- end --"'
 
 echo "::group::The tests, built on Linux"
 git -C "$ROOT" archive --format=tar -o "$work/tree.tar" HEAD
+if [ -n "$here" ]; then
+    rm -rf /tmp/swift_sql
+    run_from "$work/tree.tar" sh -c "$steps" sh "$host" "$SDK_SHA256" > "$work/bundle.b64"
+else
 run_from "$work/tree.tar" "$OSS" machine run container --image="$IMAGE" --cpus=4 --memory=8 \
     --volume=swift_sql-ci:/var/cache/bazel:32:keep --inside --cache="$host" --workdir=/ -- \
     sh -c "$steps" sh "$host" "$SDK_SHA256" > "$work/bundle.b64"
+fi
 # The bundle alone, whatever else came out on standard output.
 sed -n '/^-- the bundle --$/,/^-- end --$/p' "$work/bundle.b64" | sed '1d;$d' | base64 --decode > "$work/SwiftSQLTests.zip"
 ls -l "$work/SwiftSQLTests.zip"
 echo "::endgroup::"
+if [ -n "$only" ]; then
+    finished=1
+    exit 0
+fi
 
 echo "::group::A slot on the primary Mac"
 started=$SECONDS

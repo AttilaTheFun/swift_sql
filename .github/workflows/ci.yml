@@ -1,79 +1,253 @@
 name: CI
+# swift_sql's CI, as Reviews' policy for Logan's protected repositories has
+# it (AttilaTheFun/reviews, docs/CI_POLICY.md; Logan, 7 Nov 2026):
+#
+# - A pull request runs one job, `container`, the required check: in one of
+#   OS Server's single-use Linux containers (swift_sql-jit), leasing
+#   nothing, `swift test` on Linux (the vendored amalgamation), and the
+#   tests built on Linux as a macOS bundle with Bazel, which reads OS
+#   Server's cache and never writes it. A pull request of documentation
+#   alone stops there. A newer push cancels its run. A fork's pull request
+#   runs nothing here: no self-hosted runner ever runs a fork's code.
+# - Each commit on main runs `populate`: the bundle built, cache-only, the
+#   one job that writes the cache.
+# - What leases a machine runs only by hand (workflow_dispatch on main,
+#   `run`):
+#   - `verify`: the tests on Apple's platforms (the bundle on a slot of OS
+#     Server's primary Mac), on Windows (a Windows VM), and on Linux in
+#     Swift 6.2's own image, the oldest Swift it supports. Its last job,
+#     `verify`, keeps the `proof` artifact (no screens: each platform's
+#     result and log), and its success is the commit's tests passing. Run
+#     on a branch pushed at an earlier commit, it bisects a regression;
+#   - `release`, with `version`: verify first; only once it passes, a draft
+#     release v<version> on the commit, naming the run (propose). A library
+#     has no Alphas and no pre-releases.
+# - Logan's Release in Reviews publishes the draft, which makes its tag:
+#   `release` checks the commit is on main and was verified. Consumers pin
+#   the tag's version.
 on:
   pull_request:
   push:
     branches: [main]
-# A newer push to a pull request cancels its run if it hasn't finished;
-# main's runs are never cut short, each a group of its own: GitHub keeps one
-# pending run per group and cancels the rest, so main's runs sharing one left
-# a commit queued between two others unchecked.
+  workflow_dispatch:
+    inputs:
+      run:
+        description: "verify: the tests on every platform. release: verify, then a draft release of version."
+        type: choice
+        options: [verify, release]
+        default: verify
+      version:
+        description: "release: the version proposed, MAJOR.MINOR.PATCH"
+        type: string
+        required: false
+  # Logan's Release in Reviews publishes the draft, which makes its v* tag.
+  release:
+    types: [published]
 concurrency:
-  group: ${{ github.event_name == 'pull_request' && format('ci-pr-{0}', github.event.pull_request.number) || format('ci-{0}', github.run_id) }}
+  # A pull request's newer push cancels its older run. Every other run is a
+  # group of its own and never cancelled.
+  group: >-
+    ${{ github.event_name == 'pull_request'
+        && format('ci-pr-{0}', github.head_ref)
+        || format('ci-{0}', github.run_id) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-# On OS Server's single-use runners (self-hosted, swift_sql-jit: a Linux
-# container for each job), which lease what a job runs in from OS Server
-# and which a fork's pull request never reaches.
+permissions:
+  contents: read
+  actions: read
+# Whom the jobs' OS Server leases are for: each lease is `<job>-<run>@ci`.
+env:
+  OSS_CLIENT_ID: ${{ github.job }}-${{ github.run_id }}
 jobs:
-  # Whether the pull request changes anything but documentation (Markdown,
-  # docs/, .notes/); a push to main always does. A job it skips passes.
-  changes:
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+  # ---- Pull requests -------------------------------------------------------
+
+  container:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, swift_sql-jit]
-    timeout-minutes: 5
-    outputs:
-      code: ${{ steps.diff.outputs.code }}
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
-      - id: diff
+      # Whether it changes anything but documentation (docs/, .notes/,
+      # Markdown).
+      - id: changes
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
         run: |
-          if [ -z "$BASE" ]; then echo "code=true" >> "$GITHUB_OUTPUT"; exit 0; fi
           files="$(git diff --name-only "$BASE" HEAD)"
           echo "$files"
           if printf '%s\n' "$files" | awk '!/^([Dd]ocs\/|\.notes\/)|\.md$/ { code = 1 } END { exit !code }'; then code=true; else code=false; fi
           echo "code=$code" >> "$GITHUB_OUTPUT"
+      # Linux: the vendored amalgamation, with the runner's Swift.
+      - name: The tests on Linux
+        if: steps.changes.outputs.code == 'true'
+        run: |
+          swift --version
+          swift test
+      # The cache is read here, never written: populate alone writes it.
+      - name: The cache, read only
+        if: steps.changes.outputs.code == 'true'
+        run: echo 'build --noremote_upload_local_results' >> ~/.bazelrc
+      # Apple's platforms: the tests built as a macOS bundle, in this
+      # container (tools/ci/mac_vm_tests.sh), which only verify runs.
+      - name: The tests built for the Mac
+        if: steps.changes.outputs.code == 'true'
+        run: tools/ci/mac_vm_tests.sh --build-here --build-only
 
-  # Apple's platforms: the system's SQLite, in a macOS VM
-  # (tools/ci/mac_vm_tests.sh).
-  macos:
-    needs: changes
-    if: needs.changes.outputs.code == 'true'
+  # ---- main ----------------------------------------------------------------
+
+  # The cache's one writer (OS Server's `ci.populate` grants this job the
+  # write): the bundle built as a pull request's container job builds it.
+  # No tests, nothing published.
+  populate:
+    if: github.event_name == 'push'
+    runs-on: [self-hosted, swift_sql-jit]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - run: tools/ci/mac_vm_tests.sh --build-here --build-only
+
+  # ---- By hand: verify -----------------------------------------------------
+
+  # Each platform's tests, on what OS Server leases for them, the log kept
+  # as its part of the proof whether it passed or not.
+  tests:
+    if: github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Apple's: the system's SQLite. The bundle built in a leased
+          # container, run on a slot of OS Server's primary Mac.
+          - platform: macos
+            script: tools/ci/mac_vm_tests.sh
+          # Windows: the vendored amalgamation, and the lock as a critical
+          # section, in a Windows VM.
+          - platform: windows
+            script: tools/ci/windows_vm_tests.sh
+          # Linux: the vendored amalgamation, in Swift 6.2's own image.
+          - platform: linux
+            script: tools/ci/linux_tests.sh
+    name: tests (${{ matrix.platform }})
     runs-on: [self-hosted, swift_sql-jit]
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+      - name: The tests
+        env:
+          SCRIPT: ${{ matrix.script }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/part"
+          status=0
+          "$SCRIPT" > >(tee "$RUNNER_TEMP/part/$PLATFORM.log") 2>&1 || status=$?
+          printf '%s\n' "$status" > "$RUNNER_TEMP/part/$PLATFORM.status"
+          exit "$status"
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
-      # exec: the runner's cancel reaches the script's trap, which releases the VM.
-      - run: exec tools/ci/mac_vm_tests.sh
+          name: part-${{ matrix.platform }}
+          path: ${{ runner.temp }}/part
+          retention-days: 7
 
-  # Linux: the vendored amalgamation, built from cswiftsql.c, in a container
-  # of Swift's image (tools/ci/linux_tests.sh).
-  linux:
-    needs: changes
-    if: needs.changes.outputs.code == 'true'
+  # The proof: no screens, each platform's result and test count
+  # (proof.json) and its log (logs/), kept as the `proof` artifact Reviews
+  # reads. It passes only when every platform's tests did: its success is
+  # the commit verified, which propose and the release job ask for.
+  verify:
+    needs: tests
+    if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' }}
     runs-on: [self-hosted, swift_sql-jit]
-    timeout-minutes: 30
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: part-*
+          path: ${{ runner.temp }}/parts
+      - name: The proof
+        env:
+          COMMIT: ${{ github.sha }}
+          REF: ${{ github.ref_name }}
+          RUN: ${{ github.run_id }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/proof/logs"
+          python3 -I - "$RUNNER_TEMP/parts" "$RUNNER_TEMP/proof" << 'PY'
+          import json, os, re, shutil, sys
+          parts, proof = sys.argv[1], sys.argv[2]
+          platforms = {}
+          for platform in ("macos", "windows", "linux"):
+              folder = os.path.join(parts, "part-" + platform)
+              log = os.path.join(folder, platform + ".log")
+              status = os.path.join(folder, platform + ".status")
+              if not os.path.exists(status):
+                  platforms[platform] = {"result": "missing"}
+                  continue
+              code = int(open(status).read().strip() or "1")
+              text = open(log, errors="replace").read() if os.path.exists(log) else ""
+              counts = re.findall(r"Executed (\d+) tests?", text) or re.findall(r"(\d+) tests? (?:passed|in \d)", text)
+              platforms[platform] = {"result": "passed" if code == 0 else "failed",
+                                     "tests": int(counts[-1]) if counts else None}
+              if os.path.exists(log):
+                  shutil.copy(log, os.path.join(proof, "logs", platform + ".log"))
+          json.dump({"commit": os.environ["COMMIT"], "ref": os.environ["REF"],
+                     "run": int(os.environ["RUN"]), "kind": "tests", "platforms": platforms},
+                    open(os.path.join(proof, "proof.json"), "w"), indent=2)
+          print(json.dumps(platforms, indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: proof
+          path: ${{ runner.temp }}/proof
+          retention-days: 90
+      - if: needs.tests.result != 'success'
+        run: |
+          echo "::error::Not verified: the tests $TESTS (each platform's in proof.json)"
+          exit 1
+        env:
+          TESTS: ${{ needs.tests.result }}
+
+  # ---- By hand: a release proposed -----------------------------------------
+
+  # The draft release, once verify passed (tools/ci/propose_release.sh).
+  propose:
+    needs: verify
+    if: >-
+      always() && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' &&
+      inputs.run == 'release' && needs.verify.result == 'success'
+    runs-on: [self-hosted, swift_sql-jit]
+    timeout-minutes: 5
+    permissions:
+      # The draft release.
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
-      - run: exec tools/ci/linux_tests.sh
+          fetch-depth: 0
+          fetch-tags: true
+      # Untrusted text reaches the shell through env, never ${{ }} in run.
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: tools/ci/propose_release.sh "$VERSION"
 
-  # Windows: the vendored amalgamation, and the lock as a critical section,
-  # in a Windows VM (tools/ci/windows_vm_tests.sh).
-  windows:
-    needs: changes
-    if: needs.changes.outputs.code == 'true'
+  # ---- Released ------------------------------------------------------------
+
+  # Logan's Release in Reviews: the tag's commit must be on main and
+  # verified (tools/ci/verified_run.sh: a run by hand whose verify passed
+  # and kept its proof). Nothing is built or published.
+  release:
+    if: github.event_name == 'release' && !github.event.release.prerelease && startsWith(github.ref, 'refs/tags/v')
     runs-on: [self-hosted, swift_sql-jit]
-    timeout-minutes: 60
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
-      # exec: the runner's cancel reaches the script's trap, which releases the VM.
-      - run: exec tools/ci/windows_vm_tests.sh
+          fetch-depth: 0
+      - name: The release is a main commit
+        run: git merge-base --is-ancestor HEAD origin/main || { echo "::error::$GITHUB_REF_NAME's commit is not on main"; exit 1; }
+      - name: The release was verified
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: echo "Verified by run $(tools/ci/verified_run.sh "$(git rev-parse HEAD)")"
