@@ -2,17 +2,18 @@ name: CI
 # swift_sql's CI, as Reviews' policy for Logan's protected repositories has
 # it (AttilaTheFun/reviews, docs/CI_POLICY.md; Logan, 7 Nov 2026):
 #
+# Automated CI only builds: no test runs on its own (Logan, 7 Nov 2026).
+#
 # - A pull request runs one job, `container`, the required check: in one of
 #   OS Server's single-use Linux containers (swift_sql-jit), leasing
-#   nothing, `swift test` on Linux (the vendored amalgamation), and the
-#   tests built on Linux as a macOS bundle with Bazel, which reads OS
-#   Server's cache and never writes it. A pull request of documentation
+#   nothing, the package and its tests built on Linux with SwiftPM (the
+#   vendored amalgamation), and the tests built as a macOS bundle with
+#   Bazel, which reads OS Server's cache and never writes it. A pull request of documentation
 #   alone stops there. A newer push cancels its run. A fork's pull request
 #   runs nothing here: no self-hosted runner ever runs a fork's code.
 # - Each commit on main runs `populate`: the bundle built, cache-only, the
 #   one job that writes the cache.
-# - What leases a machine runs only by hand (workflow_dispatch on main,
-#   `run`):
+# - Every test runs only by hand (workflow_dispatch on main, `run`):
 #   - `verify`: the tests on Apple's platforms (the bundle on a slot of OS
 #     Server's primary Mac), on Windows (a Windows VM), and on Linux in
 #     Swift 6.2's own image, the oldest Swift it supports. Its last job,
@@ -79,12 +80,13 @@ jobs:
           echo "$files"
           if printf '%s\n' "$files" | awk '!/^([Dd]ocs\/|\.notes\/)|\.md$/ { code = 1 } END { exit !code }'; then code=true; else code=false; fi
           echo "code=$code" >> "$GITHUB_OUTPUT"
-      # Linux: the vendored amalgamation, with the runner's Swift.
-      - name: The tests on Linux
+      # Linux: the package and its tests built (the vendored amalgamation),
+      # with the runner's Swift. They run in verify.
+      - name: Built on Linux
         if: steps.changes.outputs.code == 'true'
         run: |
           swift --version
-          swift test
+          swift build --build-tests
       # The cache is read here, never written: populate alone writes it.
       - name: The cache, read only
         if: steps.changes.outputs.code == 'true'
@@ -151,8 +153,9 @@ jobs:
           path: ${{ runner.temp }}/part
           retention-days: 7
 
-  # The proof: no screens, each platform's result and test count
-  # (proof.json) and its log (logs/), kept as the `proof` artifact Reviews
+  # The proof: no screens, each platform's result, its test and failure
+  # counts and its log (proof.json, in the shape Reviews' tab reads: a
+  # library's proof, `kind: tests`; logs/), kept as the `proof` artifact Reviews
   # reads. It passes only when every platform's tests did: its success is
   # the commit verified, which propose and the release job ask for.
   verify:
@@ -168,28 +171,41 @@ jobs:
       - name: The proof
         env:
           COMMIT: ${{ github.sha }}
-          REF: ${{ github.ref_name }}
+          REF: ${{ github.ref }}
           RUN: ${{ github.run_id }}
         run: |
           mkdir -p "$RUNNER_TEMP/proof/logs"
           python3 -I - "$RUNNER_TEMP/parts" "$RUNNER_TEMP/proof" << 'PY'
           import json, os, re, shutil, sys
           parts, proof = sys.argv[1], sys.argv[2]
-          platforms = {}
-          for platform in ("macos", "windows", "linux"):
+          platforms = []
+          for platform, name in (("macos", "macOS"), ("windows", "Windows"), ("linux", "Linux (Swift 6.2)")):
               folder = os.path.join(parts, "part-" + platform)
               log = os.path.join(folder, platform + ".log")
               status = os.path.join(folder, platform + ".status")
+              entry = {"name": name}
               if not os.path.exists(status):
-                  platforms[platform] = {"result": "missing"}
+                  # The platform never reported: not passed.
+                  entry.update(result="failed", tests=0, failures=0)
+                  platforms.append(entry)
                   continue
               code = int(open(status).read().strip() or "1")
               text = open(log, errors="replace").read() if os.path.exists(log) else ""
-              counts = re.findall(r"Executed (\d+) tests?", text) or re.findall(r"(\d+) tests? (?:passed|in \d)", text)
-              platforms[platform] = {"result": "passed" if code == 0 else "failed",
-                                     "tests": int(counts[-1]) if counts else None}
+              # XCTest's "Executed 42 tests, with 1 failure", or Swift
+              # Testing's "Test run with 42 tests failed after … with 1 issue".
+              executed = re.findall(r"Executed (\d+) tests?, with (\d+) failures?", text)
+              testing = re.findall(r"Test run with (\d+) tests? (?:passed|failed)[^\n]*?(?:with (\d+) issues?)?", text)
+              if executed:
+                  tests, failures = int(executed[-1][0]), int(executed[-1][1])
+              elif testing:
+                  tests, failures = int(testing[-1][0]), int(testing[-1][1] or 0)
+              else:
+                  tests, failures = 0, 0
+              entry.update(result="passed" if code == 0 else "failed", tests=tests, failures=failures)
               if os.path.exists(log):
                   shutil.copy(log, os.path.join(proof, "logs", platform + ".log"))
+                  entry["log"] = "logs/" + platform + ".log"
+              platforms.append(entry)
           json.dump({"commit": os.environ["COMMIT"], "ref": os.environ["REF"],
                      "run": int(os.environ["RUN"]), "kind": "tests", "platforms": platforms},
                     open(os.path.join(proof, "proof.json"), "w"), indent=2)

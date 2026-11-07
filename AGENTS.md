@@ -38,9 +38,10 @@ SQLite through it. Tagged with the stack's number at its releases
   Tests/SwiftSQLTests is in both.
 - CI follows Reviews' policy (docs/CI_POLICY.md in AttilaTheFun/reviews;
   ci.yml's header has it whole). A pull request's one check, `container`,
-  runs `swift test` on Linux and builds the Mac's bundle, leasing nothing.
-  The tests on the Mac (a slot of OS Server's primary Mac), on Windows (a
-  VM) and in Swift 6.2's image run by hand (`run: verify`), and a release
+  builds the package and its tests on Linux and the Mac's bundle, leasing
+  nothing; no test runs on its own (Logan, 7 Nov 2026). The tests on the
+  Mac (a slot of OS Server's primary Mac), on Windows (a VM) and in Swift
+  6.2's image run by hand (`run: verify`), and a release
   proposal (`run: release` with a `version`) runs them first, then makes
   its draft.
 
