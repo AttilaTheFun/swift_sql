@@ -58,6 +58,12 @@ permissions:
 # Whom the jobs' OS Server leases are for: each lease is `<job>-<run>@ci`.
 env:
   OSS_CLIENT_ID: ${{ github.job }}-${{ github.run_id }}
+# Every step in bash with pipefail (GitHub's `bash --noprofile --norc -eo
+# pipefail {0}`): its default, `bash -e {0}`, takes a pipe's last status, so
+# a failing command piped into tee or grep would pass.
+defaults:
+  run:
+    shell: bash
 jobs:
   # ---- Pull requests -------------------------------------------------------
 
