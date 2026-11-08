@@ -14,9 +14,9 @@ name: CI
 # - Each commit on main runs `populate`: the bundle built, cache-only, the
 #   one job that writes the cache.
 # - Every test runs only by hand (workflow_dispatch on main, `run`):
-#   - `verify`: the tests on Apple's platforms (the bundle on a slot of OS
-#     Server's primary Mac), on Windows (a Windows VM), and on Linux in
-#     Swift 6.2's own image, the oldest Swift it supports. Its last job,
+#   - `verify`: the tests on GitHub's own runners: on Apple's platforms (a
+#     Mac), on Windows (Swift 6.3.2), and on Linux in Swift 6.2's own image,
+#     the oldest Swift it supports. Its last job,
 #     `verify`, keeps the `proof` artifact (no screens: each platform's
 #     result and log), and its success is the commit's tests passing. Run
 #     on a branch pushed at an earlier commit, it bisects a regression;
@@ -118,44 +118,80 @@ jobs:
 
   # ---- By hand: verify -----------------------------------------------------
 
-  # Each platform's tests, on what OS Server leases for them, the log kept
-  # as its part of the proof whether it passed or not.
-  tests:
+  # Each platform's tests, on GitHub's own runners (the repository is
+  # public), so none waits on OS Server's Macs: Logan, 8 Nov 2026. Each keeps
+  # its log and how it ended as its part of the proof, whether it passed or
+  # not.
+  #
+  # Apple's: the system's SQLite, `swift test` on one of GitHub's Macs.
+  tests-macos:
     if: github.event_name == 'workflow_dispatch'
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # Apple's: the system's SQLite. The bundle built in a leased
-          # container, run on a slot of OS Server's primary Mac.
-          - platform: macos
-            script: tools/ci/mac_vm_tests.sh
-          # Windows: the vendored amalgamation, and the lock as a critical
-          # section, in a Windows VM.
-          - platform: windows
-            script: tools/ci/windows_vm_tests.sh
-          # Linux: the vendored amalgamation, in Swift 6.2's own image.
-          - platform: linux
-            script: tools/ci/linux_tests.sh
-    name: tests (${{ matrix.platform }})
-    runs-on: [self-hosted, swift_sql-jit-small]
-    timeout-minutes: 60
+    runs-on: xcode-27
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - name: The tests
-        env:
-          SCRIPT: ${{ matrix.script }}
-          PLATFORM: ${{ matrix.platform }}
         run: |
           mkdir -p "$RUNNER_TEMP/part"
           status=0
-          "$SCRIPT" > >(tee "$RUNNER_TEMP/part/$PLATFORM.log") 2>&1 || status=$?
-          printf '%s\n' "$status" > "$RUNNER_TEMP/part/$PLATFORM.status"
+          swift test > >(tee "$RUNNER_TEMP/part/macos.log") 2>&1 || status=$?
+          printf '%s\n' "$status" > "$RUNNER_TEMP/part/macos.status"
           exit "$status"
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:
-          name: part-${{ matrix.platform }}
+          name: part-macos
+          path: ${{ runner.temp }}/part
+          retention-days: 7
+
+  # Windows: the vendored amalgamation, and the lock as a critical section,
+  # with Swift 6.3.2 (the release the Windows VM had) on GitHub's Windows.
+  tests-windows:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      # compnerd/gha-setup-swift v0.5.1, by its commit.
+      - uses: compnerd/gha-setup-swift@9ff1ee4c44888c5817fc14d1b257ac8cabb4935f
+        with:
+          swift-version: swift-6.3.2-release
+          swift-build: 6.3.2-RELEASE
+      - name: The tests
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP/part" | Out-Null
+          swift test 2>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP/part/windows.log"
+          $status = $LASTEXITCODE
+          Set-Content -Path "$env:RUNNER_TEMP/part/windows.status" -Value "$status"
+          exit $status
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: part-windows
+          path: ${{ runner.temp }}/part
+          retention-days: 7
+
+  # Linux: the vendored amalgamation, in Swift 6.2's own image, the oldest
+  # Swift it supports.
+  tests-linux:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    container: docker.io/library/swift:6.2-noble
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: The tests
+        run: |
+          mkdir -p "$RUNNER_TEMP/part"
+          status=0
+          swift test > >(tee "$RUNNER_TEMP/part/linux.log") 2>&1 || status=$?
+          printf '%s\n' "$status" > "$RUNNER_TEMP/part/linux.status"
+          exit "$status"
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: part-linux
           path: ${{ runner.temp }}/part
           retention-days: 7
 
@@ -165,9 +201,9 @@ jobs:
   # reads. It passes only when every platform's tests did: its success is
   # the commit verified, which propose and the release job ask for.
   verify:
-    needs: tests
+    needs: [tests-macos, tests-windows, tests-linux]
     if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' }}
-    runs-on: [self-hosted, swift_sql-jit-small]
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/download-artifact@v4
@@ -223,12 +259,14 @@ jobs:
           name: proof
           path: ${{ runner.temp }}/proof
           retention-days: 90
-      - if: needs.tests.result != 'success'
+      - if: needs.tests-macos.result != 'success' || needs.tests-windows.result != 'success' || needs.tests-linux.result != 'success'
         run: |
-          echo "::error::Not verified: the tests $TESTS (each platform's in proof.json)"
+          echo "::error::Not verified: macOS $MACOS, Windows $WINDOWS, Linux $LINUX (each platform's in proof.json)"
           exit 1
         env:
-          TESTS: ${{ needs.tests.result }}
+          MACOS: ${{ needs.tests-macos.result }}
+          WINDOWS: ${{ needs.tests-windows.result }}
+          LINUX: ${{ needs.tests-linux.result }}
 
   # ---- By hand: a release proposed -----------------------------------------
 
