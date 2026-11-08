@@ -32,11 +32,18 @@ SQLite through it. Tagged with the stack's number at its releases
   `Connection`/`Statement`/`Row` confined to their closures.
 - Tests: `swift test` (macOS), and `swift test` in a Linux container (CI's `swift:6.2-noble`; in an image
   whose `clang` is not the Swift toolchain's, set `CC` to the toolchain's).
-  CI's macOS run builds them with Bazel on Linux (`bazel build
+  CI builds them for the Mac with Bazel on Linux (`bazel build
   --config=apple_on_linux //:SwiftSQLTests`, with a downloader config for
-  the SDK archive) and runs the bundle on a slot of OS Server's primary Mac
-  (tools/ci/mac_vm_tests.sh). A test file added to Tests/SwiftSQLTests is in
-  both.
+  the SDK archive: tools/ci/mac_vm_tests.sh). A test file added to
+  Tests/SwiftSQLTests is in both.
+- CI follows Reviews' policy (docs/CI_POLICY.md in AttilaTheFun/reviews;
+  ci.yml's header has it whole). A pull request's one check, `container`,
+  builds the package and its tests on Linux and the Mac's bundle, leasing
+  nothing; no test runs on its own (Logan, 7 Nov 2026). The tests on the
+  Mac (a slot of OS Server's primary Mac), on Windows (a VM) and in Swift
+  6.2's image run by hand (`run: verify`), and a release
+  proposal (`run: release` with a `version`) runs them first, then makes
+  its draft.
 
 ## The repository's icon
 
