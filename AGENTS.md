@@ -41,7 +41,7 @@ SQLite through it. Tagged with the stack's number at its releases
   builds the package and its tests on Linux and the Mac's bundle, leasing
   nothing; no test runs on its own (Logan, 7 Nov 2026). The tests run by
   hand (`run: verify`) on GitHub's own runners (Logan, 8 Nov 2026), none on
-  OS Server's machines: `swift test` on a Mac, on Windows (Swift 6.3.2) and
+  Shireworks' machines: `swift test` on a Mac, on Windows (Swift 6.3.2) and
   in Swift 6.2's image; tools/ci's lease scripts are for a run by hand on OS
   Server's machines. A release
   proposal (`run: release` with a `version`) runs them first, then makes

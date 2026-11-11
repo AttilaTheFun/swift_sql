@@ -5,10 +5,10 @@ name: CI
 # Automated CI only builds: no test runs on its own (Logan, 7 Nov 2026).
 #
 # - A pull request runs one job, `container`, the required check: in one of
-#   OS Server's single-use Linux containers (swift_sql-jit), leasing
+#   Shireworks' single-use Linux containers (swift_sql-jit), leasing
 #   nothing, the package and its tests built on Linux with SwiftPM (the
 #   vendored amalgamation), and the tests built as a macOS bundle with
-#   Bazel, which reads OS Server's cache and never writes it. A pull request of documentation
+#   Bazel, which reads Shireworks' cache and never writes it. A pull request of documentation
 #   alone stops there. A newer push cancels its run. A fork's pull request
 #   runs nothing here: no self-hosted runner ever runs a fork's code.
 # - Each commit on main runs `populate`: the bundle built, cache-only, the
@@ -55,8 +55,10 @@ concurrency:
 permissions:
   contents: read
   actions: read
-# Whom the jobs' OS Server leases are for: each lease is `<job>-<run>@ci`.
+# Whom the jobs' Shireworks leases are for: each lease is `<job>-<run>@ci`
+# (OSS_CLIENT_ID until Shireworks 0.4).
 env:
+  SHIREWORKS_CLIENT_ID: ${{ github.job }}-${{ github.run_id }}
   OSS_CLIENT_ID: ${{ github.job }}-${{ github.run_id }}
 # Every step in bash with pipefail (GitHub's `bash --noprofile --norc -eo
 # pipefail {0}`): its default, `bash -e {0}`, takes a pipe's last status, so
@@ -105,7 +107,7 @@ jobs:
 
   # ---- main ----------------------------------------------------------------
 
-  # The cache's one writer (OS Server's `ci.populate` grants this job the
+  # The cache's one writer (Shireworks' `ci.populate` grants this job the
   # write): the bundle built as a pull request's container job builds it.
   # No tests, nothing published.
   populate:
@@ -119,7 +121,7 @@ jobs:
   # ---- By hand: verify -----------------------------------------------------
 
   # Each platform's tests, on GitHub's own runners (the repository is
-  # public), so none waits on OS Server's Macs: Logan, 8 Nov 2026. Each keeps
+  # public), so none waits on Shireworks' Macs: Logan, 8 Nov 2026. Each keeps
   # its log and how it ended as its part of the proof, whether it passed or
   # not.
   #
