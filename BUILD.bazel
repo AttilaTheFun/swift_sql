@@ -1,7 +1,7 @@
 # swift_sql for Bazel: the same targets as Package.swift (CSwiftSQL,
 # SwiftSQL), and its tests as a macos_unit_test bundle, which CI builds on
-# Linux and runs on a slot of OS Server's primary Mac
-# (tools/ci/mac_slot_tests.sh).
+# Linux and runs on a slot of Shireworks' primary Mac
+# (tools/ci/mac_vm_tests.sh).
 
 load("@rules_apple//apple:macos.bzl", "macos_unit_test")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")

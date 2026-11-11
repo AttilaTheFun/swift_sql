@@ -1,6 +1,6 @@
 """swift_sql's tests on a Mac, built anywhere: Bazel builds them as a
 macos_unit_test bundle on Linux too (rules_applecross), which CI runs on a
-slot of OS Server's primary Mac (tools/ci/mac_slot_tests.sh). SwiftPM's
+slot of Shireworks' primary Mac (tools/ci/mac_vm_tests.sh). SwiftPM's
 Package.swift stays what the package is built and used by; this module is
 for CI."""
 
@@ -14,7 +14,7 @@ bazel_dep(name = "rules_apple", version = "5.3.1.applecross.2")
 
 # Apple's targets built on Linux (bazel_registry's preset: rules_apple and
 # apple_support with rules_applecross's patches in): Xcode 27.2's SDKs, from
-# an archive the builder's downloader config names (OS Server's files, by
+# an archive the builder's downloader config names (Shireworks' files, by
 # SHA-256), and the Swift that built them.
 bazel_dep(name = "rules_applecross", version = "0.0.3.e859e34.1")
 
