@@ -4,15 +4,24 @@ name: CI
 #
 # Automated CI only builds: no test runs on its own (Logan, 7 Nov 2026).
 #
-# - A pull request runs one job, `container`, the required check: in one of
-#   Shireworks' single-use Linux containers (swift_sql-jit), leasing
-#   nothing, the package and its tests built on Linux with SwiftPM (the
-#   vendored amalgamation), and the tests built as a macOS bundle with
-#   Bazel, which reads Shireworks' cache and never writes it. A pull request of documentation
-#   alone stops there. A newer push cancels its run. A fork's pull request
-#   runs nothing here: no self-hosted runner ever runs a fork's code.
-# - Each commit on main runs `populate`: the bundle built, cache-only, the
-#   one job that writes the cache.
+# Every job runs on GitHub's own standard runners, as every public
+# repository's does (Logan, 15 Nov 2026): nothing of Shireworks' at run
+# time, no runner of its. Nothing here is signed and no secret is used: the
+# job's own token makes the draft.
+#
+# Pull requests and main's commits run on GitHub's Linux runners alone;
+# Apple's platforms build and test only at release verification
+# (tests-macos), on an `xcode-27` Mac (Logan, 13 Nov 2026: "i don't want to
+# run apple runners on every pr just release verification as they will be
+# the bottleneck").
+#
+# - A pull request runs one job, `container`, the required check: the
+#   package and its tests built on Linux with SwiftPM (the vendored
+#   amalgamation), in Swift's own image (6.4.0, by digest, as Visor's) on
+#   `ubuntu-24.04-arm`. A pull request of documentation alone stops there.
+#   A newer push cancels its run. A fork's pull request runs it too, on
+#   GitHub's runners, with no secret.
+# - Each commit on main runs `container` too, so main's head has its check.
 # - Every test runs only by hand (workflow_dispatch on main, `run`):
 #   - `verify`: the tests on GitHub's own runners: on Apple's platforms (a
 #     Mac), on Windows (Swift 6.3.2), and on Linux in Swift 6.2's own image,
@@ -55,11 +64,6 @@ concurrency:
 permissions:
   contents: read
   actions: read
-# Whom the jobs' Shireworks leases are for: each lease is `<job>-<run>@ci`
-# (OSS_CLIENT_ID until Shireworks 0.4).
-env:
-  SHIREWORKS_CLIENT_ID: ${{ github.job }}-${{ github.run_id }}
-  OSS_CLIENT_ID: ${{ github.job }}-${{ github.run_id }}
 # Every step in bash with pipefail (GitHub's `bash --noprofile --norc -eo
 # pipefail {0}`): its default, `bash -e {0}`, takes a pipe's last status, so
 # a failing command piped into tee or grep would pass.
@@ -69,59 +73,43 @@ defaults:
 jobs:
   # ---- Pull requests -------------------------------------------------------
 
+  # Linux, in Swift's own image (by digest).
   container:
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, swift_sql-jit]
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    runs-on: ubuntu-24.04-arm
+    container:
+      image: swift:6.4.0-noble@sha256:31d14d727f4451f25e29bac9c42563a098c39ac66415e8bad970f48038e38aca
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
+      # The checkout belongs to the runner's user, not the container's.
+      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       # Whether it changes anything but documentation (docs/, .notes/,
-      # Markdown).
+      # Markdown). Main's commits build whatever they change.
       - id: changes
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
         run: |
+          [ -n "$BASE" ] || { echo "code=true" >> "$GITHUB_OUTPUT"; exit 0; }
           files="$(git diff --name-only "$BASE" HEAD)"
           echo "$files"
           if printf '%s\n' "$files" | awk '!/^([Dd]ocs\/|\.notes\/)|\.md$/ { code = 1 } END { exit !code }'; then code=true; else code=false; fi
           echo "code=$code" >> "$GITHUB_OUTPUT"
-      # Linux: the package and its tests built (the vendored amalgamation),
-      # with the runner's Swift. They run in verify.
+      # Linux: the package and its tests built (the vendored amalgamation).
+      # They run in verify.
       - name: Built on Linux
         if: steps.changes.outputs.code == 'true'
         run: |
           swift --version
           swift build --build-tests
-      # The cache is read here, never written: populate alone writes it.
-      - name: The cache, read only
-        if: steps.changes.outputs.code == 'true'
-        run: echo 'build --noremote_upload_local_results' >> ~/.bazelrc
-      # Apple's platforms: the tests built as a macOS bundle, in this
-      # container (tools/ci/mac_vm_tests.sh), which only verify runs.
-      - name: The tests built for the Mac
-        if: steps.changes.outputs.code == 'true'
-        run: tools/ci/mac_vm_tests.sh --build-here --build-only
-
-  # ---- main ----------------------------------------------------------------
-
-  # The cache's one writer (Shireworks' `ci.populate` grants this job the
-  # write): the bundle built as a pull request's container job builds it.
-  # No tests, nothing published.
-  populate:
-    if: github.event_name == 'push'
-    runs-on: [self-hosted, swift_sql-jit]
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v4
-      - run: tools/ci/mac_vm_tests.sh --build-here --build-only
 
   # ---- By hand: verify -----------------------------------------------------
 
   # Each platform's tests, on GitHub's own runners (the repository is
-  # public), so none waits on Shireworks' Macs: Logan, 8 Nov 2026. Each keeps
+  # public): Logan, 8 Nov 2026. Each keeps
   # its log and how it ended as its part of the proof, whether it passed or
   # not.
   #
@@ -174,12 +162,13 @@ jobs:
           path: ${{ runner.temp }}/part
           retention-days: 7
 
-  # Linux: the vendored amalgamation, in Swift 6.2's own image, the oldest
-  # Swift it supports.
+  # Linux: the vendored amalgamation, in Swift 6.2's own image (by digest),
+  # the oldest Swift it supports.
   tests-linux:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
-    container: docker.io/library/swift:6.2-noble
+    container:
+      image: swift:6.2-noble@sha256:3459518b2e723a7c363d0f8cfa44fc796c77ecd8c18e92fd10e6f92dd78c0b12
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -205,7 +194,7 @@ jobs:
   verify:
     needs: [tests-macos, tests-windows, tests-linux]
     if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/download-artifact@v4
@@ -278,7 +267,7 @@ jobs:
     if: >-
       always() && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' &&
       inputs.run == 'release' && needs.verify.result == 'success'
-    runs-on: [self-hosted, swift_sql-jit-small]
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       # The draft release.
@@ -301,7 +290,7 @@ jobs:
   # and kept its proof). Nothing is built or published.
   release:
     if: github.event_name == 'release' && !github.event.release.prerelease && startsWith(github.ref, 'refs/tags/v')
-    runs-on: [self-hosted, swift_sql-jit-small]
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
