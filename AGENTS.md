@@ -9,8 +9,8 @@ SQLite through it. Tagged with the stack's number at its releases
 
 - **A Swift package** (Bazel consumers take it through
   rules_swift_package_manager, as `@swiftpkg_swift_sql//:SwiftSQL`; its own
-  MODULE.bazel and BUILD.bazel are CI's, building the tests as a macOS
-  bundle on Linux). SQLite's compile options live in
+  MODULE.bazel and BUILD.bazel build the tests as a macOS bundle on Linux,
+  for a run by hand on Shireworks' machines: tools/ci/mac_vm_tests.sh). SQLite's compile options live in
   `Sources/CSwiftSQL/cswiftsql.c`, not in the manifest, so every build of the
   package builds the same SQLite. Change them there.
 - **Upgrading SQLite**: replace `Sources/CSwiftSQL/amalgamation/sqlite3.h` and
@@ -32,16 +32,18 @@ SQLite through it. Tagged with the stack's number at its releases
   `Connection`/`Statement`/`Row` confined to their closures.
 - Tests: `swift test` (macOS), and `swift test` in a Linux container (CI's `swift:6.2-noble`; in an image
   whose `clang` is not the Swift toolchain's, set `CC` to the toolchain's).
-  CI builds them for the Mac with Bazel on Linux (`bazel build
+  CI builds them for the Mac with SwiftPM on one of GitHub's `xcode-27`
+  Macs; by hand, Bazel builds them for the Mac on Linux (`bazel build
   --config=apple_on_linux //:SwiftSQLTests`, with a downloader config for
   the SDK archive: tools/ci/mac_vm_tests.sh). A test file added to
   Tests/SwiftSQLTests is in both.
 - CI follows Reviews' policy (docs/CI_POLICY.md in AttilaTheFun/reviews;
-  ci.yml's header has it whole). A pull request's one check, `container`,
-  builds the package and its tests on Linux and the Mac's bundle, leasing
-  nothing; no test runs on its own (Logan, 7 Nov 2026). The tests run by
-  hand (`run: verify`) on GitHub's own runners (Logan, 8 Nov 2026), none on
-  Shireworks' machines: `swift test` on a Mac, on Windows (Swift 6.3.2) and
+  ci.yml's header has it whole). Every job runs on GitHub's own standard
+  runners, none on Shireworks' (a public repository: Logan, 15 Nov 2026).
+  A pull request's check, `container`, builds the package and its tests on
+  Linux in Swift's image, and `container-apple` builds them on an
+  `xcode-27` Mac; no test runs on its own (Logan, 7 Nov 2026). The tests
+  run by hand (`run: verify`) on GitHub's own runners (Logan, 8 Nov 2026): `swift test` on a Mac, on Windows (Swift 6.3.2) and
   in Swift 6.2's image; tools/ci's lease scripts are for a run by hand on OS
   Server's machines. A release
   proposal (`run: release` with a `version`) runs them first, then makes
